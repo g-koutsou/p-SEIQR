@@ -3,8 +3,9 @@
 #include <argp.h>
 #include <stdbool.h>
 
-static unsigned int N;
-#define NSTATES (5)
+
+static unsigned int N; /* Number of particles */
+#define NSTATES (5)    /* Number of states */
 
 #define S  0  // Susceptible
 #define I  1  // Infectious
@@ -13,18 +14,30 @@ static unsigned int N;
 #define RQ 4  // Recovered after being quarantined
 #define RANDOM_MAX (2147483647)
 
+/***
+ * Velocity Profile Struct: stores velocities and the points in time
+ * after which each velocity applies
+ ***/
 struct velocity_profile {
   int size;
   double *times;
   double *velocities;
 };
 
+/***
+ * Quarantine Ratio (rQ) Struct: stores the ratio of infectious
+ * quarantined (rQ) and the points in time after which each rQ applies
+ ***/
 struct rQ_profile {
   int size;
   double *times;
   double *quarantine_ratios;
 };
 
+
+/***
+ * Open file, catch error if open fails
+ ***/
 FILE *
 uopen(char fname[], char *flags)
 {
@@ -37,6 +50,9 @@ uopen(char fname[], char *flags)
   return fp;
 }
 
+/***
+ * Allocate a buffer, catch error if allocation fails
+ ***/
 void *
 ualloc(size_t size)
 {
@@ -48,6 +64,11 @@ ualloc(size_t size)
   return ptr;
 }
 
+/***
+ * Reads a file and returns a velocity profile structure. Converts
+ * each line to two floats (time and velocity) stopping after the
+ * first failure to convert.
+ ***/
 struct velocity_profile *
 load_velocity_profile(char fname[])
 {
@@ -77,6 +98,10 @@ load_velocity_profile(char fname[])
   return vp;
 }
 
+/***
+ * Scales time, effectively scaling the velocity, according to the
+ * velocity profile
+ ***/
 double
 apply_velocity_profile(struct velocity_profile *vp, double tx, double t0)
 {
@@ -92,6 +117,11 @@ apply_velocity_profile(struct velocity_profile *vp, double tx, double t0)
   return (1.0/vp->velocities[n])*(tx - ti[n]) + vp->times[n];
 }
 
+/***
+ * Reads a file and returns a quarantine ratio profile
+ * structure. Converts each line to two floats (time and rQ) stopping
+ * after the first failure to convert.
+ ***/
 struct rQ_profile *
 load_rQ_profile(char fname[])
 {
@@ -121,6 +151,9 @@ load_rQ_profile(char fname[])
   return rq;
 }
 
+/***
+ * Determine and return rQ for given time
+ ***/
 double
 get_rQ(struct rQ_profile *rq, double t)
 {
@@ -131,6 +164,9 @@ get_rQ(struct rQ_profile *rq, double t)
   return rq->quarantine_ratios[rq->size-1];
 }
 
+/***
+ * Return a random number in [0, 1)
+ ***/
 double
 randr()
 {
@@ -138,6 +174,9 @@ randr()
   return r;
 }
 
+/***
+ * Return a random particle number, i.e. a random integer in [0, N)
+ ***/
 unsigned long int
 random_particle()
 {
@@ -145,6 +184,11 @@ random_particle()
   return (int)(r*N);
 }
 
+/***
+ * Initialize the states array (*arr) with all particles to "S" except
+ * for n_infected number of infectious ("I") and n_quarantined number
+ * of quarantined ("Q")
+ ***/
 void
 init_states(int *arr, int n_infected, int n_quarantined)
 {
@@ -166,6 +210,10 @@ init_states(int *arr, int n_infected, int n_quarantined)
   return;
 }
 
+/***
+ * Initialize the N-length array *arr to t0. Used to track the time of
+ * infection.
+ ***/
 void
 init_I_t0(double *arr, double t0)
 {
@@ -175,6 +223,11 @@ init_I_t0(double *arr, double t0)
   return;
 }
 
+/***
+ * Initialize the N-length integer array *Rt to zero. *Rt is used to
+ * track the number of transmissions, in turn to be used to obtain the
+ * basic reproduction number.
+ ***/
 void
 init_R(int *Rt)
 {
@@ -184,6 +237,10 @@ init_R(int *Rt)
   return;
 }
 
+/***
+ * Go over state array *arr and based on infectious_time transition
+ * "I"s to "RI"s and "Q"s to "RQ"s.
+ ***/
 void
 recover(int *arr, double *times, double t, double infectious_time)
 {
@@ -205,6 +262,10 @@ recover(int *arr, double *times, double t, double infectious_time)
   return;
 }
 
+/***
+ * Print cycles, time, average reproduction number (over all recovered
+ * individuals), and the number of individuals in each state.
+ ***/
 void
 print_state(int *arr, int *Rt, double t, int cycles)
 {
@@ -236,7 +297,7 @@ print_state(int *arr, int *Rt, double t, int cycles)
 }
 
 static char doc[] =
-  "Run SIR over a file";
+  "Run SIR over collisions file FILE_NAME for N particles";
 
 static char args_doc[] = "N FILE_NAME";
 
@@ -374,7 +435,7 @@ main(int argc, char *argv[])
   double *I_t0 = ualloc(sizeof(double)*N);
   int *Rt = ualloc(sizeof(double)*N);
   FILE *fp = uopen(fname, "r");
-  /* Get t0 and rewind */
+  /* Read first line, get t0, then rewind */
   double t0 = 0;
   {
     char line[1024];
@@ -386,6 +447,8 @@ main(int argc, char *argv[])
   
   srandom(seed);
 
+  /* Iterate line-by-line. Restart the SIR model every "period" time
+     units, incrementing "cycles" each time */
   int cycles = 0;
   for(int iter=0; !feof(fp); iter++) {
     char line[1024];
@@ -412,7 +475,9 @@ main(int argc, char *argv[])
       quarantine_ratio = get_rQ(rq, t);
     
     int pij[2] = {p0, p1};
-    int xy = 0;
+    /* Will be set to 1 in case of an "Infection event", i.e. if a
+       collision between an "S" and an "I" happens */
+    int xy = 0; 
     for(int i=0; i<2; i++) {
       int pi = pij[(i+0) % 2];
       int pj = pij[(i+1) % 2];
@@ -432,6 +497,9 @@ main(int argc, char *argv[])
       }
       xy += (x & y);
     }
+
+    /* Go over state and recover, then print state. This should only
+       be necessary if a collision event occured. */
     if(xy) {
       recover(state_arr, I_t0, t, infectious_time);
       print_state(state_arr, Rt, t, cycles-1);
