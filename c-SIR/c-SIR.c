@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <argp.h>
 #include <stdbool.h>
+#include <string.h>
 
 
 static unsigned int N; /* Number of particles */
@@ -32,6 +33,19 @@ struct rQ_profile {
   int size;
   double *times;
   double *quarantine_ratios;
+};
+
+/***
+ * Probability profile Struct: stores the infect probability for each
+ * portion of population and the points in time after which each rQ
+ * applies
+ ***/
+struct probability_profile {
+  int n_times;
+  int *n_probs;
+  double *times;
+  double **population;
+  double **probability;
 };
 
 
@@ -162,6 +176,130 @@ get_rQ(struct rQ_profile *rq, double t)
       return rq->quarantine_ratios[i];
   }
   return rq->quarantine_ratios[rq->size-1];
+}
+
+/***
+ * Reads a file and returns an probability profile structure. Each
+ * line begins with a time, then any number of items, where each item
+ * is two floats separated by a colun ":". The first float in each
+ * item is the infect propability and the second float the proportion
+ * of the population that infect probability applies to.
+ ***/
+struct probability_profile *
+load_probability_profile(char fname[])
+{
+  FILE *fp = uopen(fname, "r");
+  int nlines = 0;
+  while(!feof(fp)) {    
+    char line[1024];
+    fgets(line, 1024, fp);
+    const char sep[] = " ";
+    char *token = strtok(line, sep);
+    int ncol = token != NULL ? 1 : 0;
+    while(token != NULL) {
+      token = strtok(NULL, sep);
+      ncol++;
+    }
+    if(ncol == 0) {
+      break;
+    }
+    nlines++;
+  }
+  nlines--;
+  if(nlines <= 0) {
+    fprintf(stderr, " Error parsing %s. Empty file?\n", fname);
+    exit(-3);
+  }
+  rewind(fp);  
+  struct probability_profile *pp = ualloc(sizeof(struct probability_profile));
+  pp->n_times = nlines;
+  pp->times = ualloc(sizeof(double)*nlines);
+  pp->n_probs = ualloc(sizeof(int)*nlines);
+  pp->population = ualloc(sizeof(double *)*nlines);
+  pp->probability = ualloc(sizeof(double *)*nlines);
+  for(int i=0; i<pp->n_times; i++) {
+    char line[1024];
+    fgets(line, 1024, fp);
+    const char sep[] = " ";
+    char *token = strtok(line, sep);
+    pp->times[i] = strtod(token, NULL);
+    int ncol = 0;
+    while(token != NULL) {
+      token = strtok(NULL, sep);
+      ncol++;
+    }
+    pp->n_probs[i] = ncol-1;
+  }
+  for(int i=0; i<pp->n_times; i++) {
+    if(pp->n_probs[i] == 0) {
+      fprintf(stderr, " Error parsing %s. Malformed line: %d?\n", fname, i);
+      exit(-3);
+    }
+  }
+  rewind(fp);
+  for(int i=0; i<pp->n_times; i++) {
+    char line[1024];
+    fgets(line, 1024, fp);
+    const char sep[] = " ";
+    char *token = strtok(line, sep);
+    int ncol = pp->n_probs[i];
+    pp->population[i] = ualloc(sizeof(double)*ncol);
+    pp->probability[i] = ualloc(sizeof(double)*ncol);
+    for(int j=0; j<ncol; j++) {
+      token = strtok(NULL, sep);
+      char *left = strsep(&token, ":");
+      if(left == NULL) {
+	fprintf(stderr, " Error parsing %s. Malformed line: %d, column: %d?\n", fname, i, j+1);
+	exit(-3);
+      }
+      pp->probability[i][j] = strtod(left, NULL);
+      char *right = strsep(&token, ":");
+      if(right == NULL) {
+	fprintf(stderr, " Error parsing %s. Malformed line: %d, column: %d?\n", fname, i, j+1);
+	exit(-3);
+      }
+      pp->population[i][j] = strtod(right, NULL);
+    }
+  }
+  fclose(fp);
+  for(int i=0; i<pp->n_times; i++) {
+    double sum = 0;
+    for(int j=0; j<pp->n_probs[i]; j++) {
+      sum += pp->population[i][j];
+    }
+    if(sum != 1) {
+      fprintf(stderr, " Error on line: %d of %s, population fractions should sum to 1\n", i, fname);
+      exit(-3);
+    }
+  }
+
+  return pp;
+}
+
+/***
+ * Determine infect probability given time and particle IDs
+ ***/
+double
+get_infect_probability(struct probability_profile *pp, double t, int pid)
+{
+  double *pop, *pro;
+  int i = 0;
+  for(i=0; i<pp->n_times-1; i++) {
+    if(t < pp->times[i+1]) {
+      break;
+    }
+  }
+  pop = pp->population[i];
+  pro = pp->probability[i];
+  double group = (double)pid / (double)N;
+  double sum = 0;
+  int j = 0;
+  for(j=0; j<pp->n_probs[i]; j++) {
+    sum += pop[j];
+    if(group <= sum)
+      break;
+  }
+  return pro[j];
 }
 
 /***
@@ -306,27 +444,30 @@ static struct argp_option options[] =
    {"infectious-time",     't', "T",      0,  "Time each infected is infectious, in simulation time units" },
    {"period",              'p', "P",      0,  "Period: restart every P time units" },
    {"quarantine-ratio",    'r', "R",      0,  "Ratio of infected to quarantined" },
+   {"infect-probability",  'i', "R",      0,  "Probability a collision will result in infection" },
    {"initial-infectious",  'I', "NI",     0,  "Initial number of infectious" },
    {"initial-quarantined", 'Q', "NQ",     0,  "Initial number of quarantined" },
    {"random-seed",         's', "S",      0,  "Use S to initialize the random number generator" },
    {"velocity-scaling",    'v', "V",      0,  "Scale velocity by a factor of V" },
    {"velocity-profile",    'f', "F",      0,  "Scale velocities according to profile in file F" },
    {"quarantine-profile",  'q', "F",      0,  "Change quarantined ratio according to profile in file F" },
+   {"probability-profile", 'b', "F",      0,  "Change infection probability according to profile in file F" },
    { 0 }
   };
 
 struct arguments
 {
   char *fname;
-  char *velocity_profile, *quarantine_profile;
+  char *velocity_profile, *quarantine_profile, *probability_profile;
   int N;
-  double infectious_time, period, quarantine_ratio, velocity_scaling;
+  double infectious_time, period, quarantine_ratio, velocity_scaling, infect_probability;
   int initial_infected, initial_quarantined;
   unsigned long int seed;
 };
 
-static bool opts_parsed[2][2] = {{false, false},
-				 {false, false}};
+static bool opts_parsed[3][2] = {{false, false},
+				 {false, false},
+				 {false, false},};
 
 static error_t
 parse_opt(int key, char *arg, struct argp_state *state)
@@ -355,6 +496,14 @@ parse_opt(int key, char *arg, struct argp_state *state)
     }
     opts_parsed[0][0] = true;
     break;
+  case 'i':
+    arguments->infect_probability = strtod(arg, NULL);
+    if(arguments->infect_probability > 1 || arguments->infect_probability < 0) {
+      argp_failure(state, 1, 0, " -%c :option argument should be within [0,1]\n", key);
+      return 1;
+    }
+    opts_parsed[2][0] = true;    
+    break;
   case 'I':
     arguments->initial_infected = strtoul(arg, NULL, 10);
     break;
@@ -364,6 +513,10 @@ parse_opt(int key, char *arg, struct argp_state *state)
   case 'f':
     arguments->velocity_profile = arg;
     opts_parsed[1][1] = true;
+    break;
+  case 'b':
+    arguments->probability_profile = arg;
+    opts_parsed[2][1] = true;
     break;
   case 'q':
     arguments->quarantine_profile = arg;
@@ -381,6 +534,8 @@ parse_opt(int key, char *arg, struct argp_state *state)
       argp_failure(state, 1, 0, " -%c and -%c cannot be used together\n", 'r', 'q');
     if(opts_parsed[1][0] && opts_parsed[1][1])
       argp_failure(state, 1, 0, " -%c and -%c cannot be used together\n", 'v', 'f');
+    if(opts_parsed[2][0] && opts_parsed[2][1])
+      argp_failure(state, 1, 0, " -%c and -%c cannot be used together\n", 'b', 'i');
     break;
   case ARGP_KEY_END:
     if (state->arg_num < 2)
@@ -405,9 +560,11 @@ main(int argc, char *argv[])
   arguments.velocity_scaling = 1;
   arguments.initial_infected = 1;
   arguments.initial_quarantined = 0;
+  arguments.infect_probability = 1;
   arguments.seed = 7;
   arguments.velocity_profile = NULL;
   arguments.quarantine_profile = NULL;
+  arguments.probability_profile = NULL;
  
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
   
@@ -418,10 +575,12 @@ main(int argc, char *argv[])
   double velocity_scaling = arguments.velocity_scaling;
   int initial_infected = arguments.initial_infected;
   int initial_quarantined = arguments.initial_quarantined;
+  double infect_probability = arguments.infect_probability;
   N = arguments.N;
   char *fname = arguments.fname;
   char *velocity_profile = arguments.velocity_profile;
   char *quarantine_profile = arguments.quarantine_profile;
+  char *probability_profile = arguments.probability_profile;
 
   struct velocity_profile *vp = NULL;
   if(velocity_profile != NULL)
@@ -430,7 +589,11 @@ main(int argc, char *argv[])
   struct rQ_profile *rq = NULL;
   if(quarantine_profile != NULL)
     rq = load_rQ_profile(quarantine_profile);
-  
+
+  struct probability_profile *pp = NULL;
+  if(probability_profile != NULL)
+    pp = load_probability_profile(probability_profile);
+
   int *state_arr = ualloc(sizeof(int)*N);
   double *I_t0 = ualloc(sizeof(double)*N);
   int *Rt = ualloc(sizeof(double)*N);
@@ -486,13 +649,19 @@ main(int argc, char *argv[])
       if(x & y) {
     	double dt = t - I_t0[pi];
     	if(dt < infectious_time) {
-    	  if(randr() < quarantine_ratio) {
-    	    state_arr[pj] = Q;
-    	  } else {
-    	    state_arr[pj] = I;
-    	  }
-    	  Rt[pi] += 1;
-    	  I_t0[pj] = t;
+	  if(pp != NULL) {
+	    // Determine probability according to susceptible
+	    infect_probability = get_infect_probability(pp, t, pj);
+	  }
+	  if(randr() < infect_probability) {
+	    if(randr() < quarantine_ratio) {
+	      state_arr[pj] = Q;
+	    } else {
+	      state_arr[pj] = I;
+	    }
+	    Rt[pi] += 1;
+	    I_t0[pj] = t;
+	  }
     	}
       }
       xy += (x & y);
