@@ -1,3 +1,4 @@
+*.DS_Store
 *~
 *.o
 c-SIR/c-sir
