@@ -23,7 +23,7 @@ def interpolate(xs, ys, xp=None):
     if xp is None:
         maxx = np.concatenate(xs).max()
         minx = np.concatenate(xs).min()
-        xp = np.linspace(minx, maxx, 75)
+        xp = np.linspace(minx, maxx, 1024)
     yp = np.array([np.interp(xp, x, y) for x,y in zip(xs,ys)])
     return xp,yp
 
@@ -47,7 +47,7 @@ fig.show()
 
 fig = plt.figure(2)
 fig.clf()
-ax = fig.add_axes([0.1, 0.1, 0.8, 0.8])
+ax = fig.add_axes([0.12, 0.12, 0.8, 0.8])
 for rt in rts:
     t = [sets[rt][x][:,0] for x in sets[rt]]
     R = [sets[rt][x][:,1] for x in sets[rt]]
@@ -55,18 +55,21 @@ for rt in rts:
     nstat = yp.shape[0]
     ave = yp.mean(axis=0)
     err = yp.std(axis=0)/np.sqrt(yp.shape[0])
-    m, = ax.plot(tp, ave, ls="-", lw=0.5, label=r"$\tau$={:4.2f}, $N_{{stat}}={}$".format(rt, nstat))
+    m, = ax.plot(tp, ave, ls="-", lw=0.5, label=r"$d_f/a={:4.1f}$".format(rt))
     ax.fill_between(tp, ave+err, ave-err, alpha=0.5, color=m.get_color())
-    ax.plot([rt, rt], [0, max(ave)], ls="--", color=m.get_color())
-ax.legend(loc="upper right", frameon=False)
-ax.set_ylabel("R(t)")
-ax.set_xlabel("t")
+    ax.plot([rt, rt], [-0.1, max(ave)*1.1], ls="--", color=m.get_color())
+    # ax.text(rt, max(ave)+0.1, "$d_f/a={:4.1f}$".format(rt), fontsize=11, va="bottom", ha="center")
+# ax.legend(loc="upper left", frameon=False)
+ax.set_ylabel("$\mathcal{R}(t)$")
+ax.set_xlabel("$t/a$")
+ax.set_xlim(0, 7)
+ax.set_ylim(-0.1)
 fig.canvas.draw()
 fig.show()
 
 fig = plt.figure(3)
 fig.clf()
-ax = fig.add_axes([0.1, 0.1, 0.8, 0.8])
+ax = fig.add_axes([0.12, 0.12, 0.8, 0.8])
 data = list()
 for rt in rts:
     t = [sets[rt][x][:,0] for x in sets[rt]]
@@ -92,7 +95,11 @@ y = fit.p[0]*(x+fit.p[1])
 ax.plot(x, gv.mean(y), ls="--", color=m.get_color())
 ax.set_xlim(0)
 ax.set_ylim(0)
-ax.set_ylabel(r"$R_0$=R($\tau$)")
-ax.set_xlabel(r"$\tau$")
+ax.set_ylabel(r"$\mathcal{R}_0$=$\mathcal{R}$($d_f$)")
+ax.set_xlabel(r"$d_f/a$")
 fig.canvas.draw()
 fig.show()
+
+if False:
+    plt.figure(2).savefig("Rt-scale-setting.tiff", dpi=300)
+    plt.figure(3).savefig("R0-scale-setting.tiff", dpi=300)    

@@ -37,8 +37,7 @@ def interpolate(xs, ys, xp=None, npoints=256):
     yp = np.array([np.interp(xp, x, y) for x,y in zip(xs,ys)])
     return xp,yp
 
-cy = {
-    "0": np.array([
+cy_data = np.array([
           2,  2,  6, 10, 21, 26, 33,
          46, 49, 58, 67, 75, 84, 95,
         116,124,132,146,162,179,214,
@@ -47,12 +46,18 @@ cy = {
         662,695,715,735,750,761,767,
         772,784,790,795,804,810,817,
         822,837,843,850,857,864,872,
-        874,878,883,889,891,892,898]),
-}
+        874,878,883,889,891,892,898
+])
+
+end_day = {"A4": 57,
+           "A6": 60}[vp]
+
+cy = cy_data[:end_day]
 
 ascale = 10/rt # days per time unit
 
-fig = plt.figure(1, figsize=(7.5,7.5))
+# fig = plt.figure(1, figsize=(7.5,5.4))
+fig = plt.figure(1, figsize=(6,5))
 fig.clf()
 gs = mpl.gridspec.GridSpec(100, 100, left=0.15, right=0.975, bottom=0.1, top=0.975)
 ax = fig.add_subplot(gs[:70,:])
@@ -64,11 +69,11 @@ ave = yp.mean(axis=0)
 err = yp.std(axis=0)/np.sqrt(yp.shape[0])
 m, = ax.plot(ascale*tp, ave, ls="-", lw=0.5)
 ax.fill_between(ascale*tp, ave+err, ave-err, alpha=0.5, color=m.get_color(), label="Confirmed cases (cumulative)")
-if True:
-    x,y = np.arange(len(cy["0"])),cy["0"]
+if True:    
+    x,y = np.arange(len(cy)),cy
     ax.plot(x, y, ls="", color="k", marker="x", ms=3, label="Cyprus data (cumulative)")
 if False:
-    x,y = np.arange(len(cy["0"])),cy["0"]
+    x,y = np.arange(len(cy)),cy
     N = y.shape[0]
     n = (N//7)*7
     x0 = x[:n].reshape([n//7,7]).mean(axis=1)
@@ -94,7 +99,7 @@ if True:
 ax.legend(loc="upper left", frameon=False, ncol=1)
 ax.set_ylabel(r"Infected")
 ax.set_xticklabels([])
-ax.set_ylim(0, 1500)
+ax.set_ylim(0, 1750)
 xmax = 172
 ax.set_xticks(np.arange(10,xmax), minor=True)
 #.
@@ -164,12 +169,10 @@ else:
     ax.text(ascale*ts[i+1], y, "                  % of infected detected",
             ha="left", va="top", fontsize=11)
 ax.set_ylim(0, max(3.3, max(gv.mean(R0[2:]))+1.5))
-yt = ax.get_yticks()
-if 1 not in yt:
-    yt = np.array(list(sorted(yt.tolist() + [1])))
-ax.set_yticks(yt)
-ax.set_ylim(0, max(3.3, max(gv.mean(R0[2:]))+1.5))
-ax.set_ylabel(r"$\tilde{R}_0$")
+# ax.set_ylim(0, max(3.3, max(gv.mean(R0[2:]))+1.5))
+ax.set_ylim(0, 4.9)
+ax.set_yticks(np.arange(0, int(ax.get_ylim()[1]+1)))
+ax.set_ylabel(r"$\tilde{\mathcal{R}}_0$")
 ax.set_xlabel("date")
 #.
 for ax in fig.axes[:]:
@@ -221,6 +224,10 @@ ax.set_xlabel("date")
 fig.canvas.draw()
 fig.show()
 
-if True:
+if False:
     plt.figure(1).savefig("{}-1.pdf".format(vp))
     plt.figure(2).savefig("{}-2.pdf".format(vp))
+
+if False:
+    plt.figure(1).savefig("{}-1.tiff".format(vp), dpi=300)
+    plt.figure(2).savefig("{}-2.tiff".format(vp), dpi=300)
