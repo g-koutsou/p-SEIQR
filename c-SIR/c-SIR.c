@@ -6,13 +6,14 @@
 
 
 static unsigned int N; /* Number of particles */
-#define NSTATES (5)    /* Number of states */
+#define NSTATES (6)    /* Number of states */
 
 #define S  0  // Susceptible
-#define I  1  // Infectious
-#define Q  2  // Quarantined (Infected but not infectious)
-#define RI 3  // Recovered after being infectious
-#define RQ 4  // Recovered after being quarantined
+#define E  1  // Exposed (will become infected)
+#define I  2  // Infectious
+#define Q  3  // Quarantined (Infected but not infectious)
+#define RI 4  // Recovered after being infectious
+#define RQ 5  // Recovered after being quarantined
 #define RANDOM_MAX (2147483647)
 
 /***
@@ -376,23 +377,38 @@ init_R(int *Rt)
 }
 
 /***
- * Go over state array *arr and based on infectious_time transition
- * "I"s to "RI"s and "Q"s to "RQ"s.
+ * Go over state array *arr and based on exposed_time and
+ * infectious_time transition "E"s to "I"s or "Q"s or "I"s and "Q"s to
+ * "RI"s and "RQ"s.
  ***/
 void
-recover(int *arr, double *times, double t, double infectious_time)
+update(int *arr, double *times, double t, double quarantine_ratio, double exposed_time, double infectious_time)
 {
   for(int i=0; i<N; i++) {
-    int x = t - times[i] > infectious_time;
+    int xi = t - times[i] > infectious_time;
+    int xj = t - times[i] > exposed_time;
+    {
+      int y = arr[i] == E;
+      if(xj & y) {
+	/* Turn an exposed ("E") to either "Q" or "I" */
+	if(randr() < quarantine_ratio) {
+	  arr[i] = Q;
+	} else {
+	  arr[i] = I;
+	}
+      }
+    }
     {
       int y = arr[i] == I;
-      if(x & y) {
+      /* Recover an infectious */
+      if(xi & y) {
 	arr[i] = RI;
       }
     }
     {
       int y = arr[i] == Q;
-      if(x & y) {
+      /* Recover a quaratnined */
+      if(xi & y) {
 	arr[i] = RQ;
       }
     }
@@ -442,6 +458,7 @@ static char args_doc[] = "N FILE_NAME";
 static struct argp_option options[] =
   {
    {"infectious-time",     't', "T",      0,  "Time each infected is infectious, in simulation time units" },
+   {"exposed-time",        'e', "T",      0,  "Exposed time (infected but not infectious yet), in simulation units" },
    {"period",              'p', "P",      0,  "Period: restart every P time units" },
    {"quarantine-ratio",    'r', "R",      0,  "Ratio of infected to quarantined" },
    {"infect-probability",  'i', "R",      0,  "Probability a collision will result in infection" },
@@ -460,7 +477,7 @@ struct arguments
   char *fname;
   char *velocity_profile, *quarantine_profile, *probability_profile;
   int N;
-  double infectious_time, period, quarantine_ratio, velocity_scaling, infect_probability;
+  double infectious_time, exposed_time, period, quarantine_ratio, velocity_scaling, infect_probability;
   int initial_infected, initial_quarantined;
   unsigned long int seed;
 };
@@ -477,6 +494,9 @@ parse_opt(int key, char *arg, struct argp_state *state)
   switch (key) {
   case 't':
     arguments->infectious_time = strtod(arg, NULL);
+    break;
+  case 'e':
+    arguments->exposed_time = strtod(arg, NULL);
     break;
   case 'p':
     arguments->period = strtod(arg, NULL);
@@ -555,6 +575,7 @@ main(int argc, char *argv[])
 {
   struct arguments arguments;
   arguments.infectious_time = 3;
+  arguments.exposed_time = 0;
   arguments.period = 15;
   arguments.quarantine_ratio = 0;
   arguments.velocity_scaling = 1;
@@ -570,6 +591,7 @@ main(int argc, char *argv[])
   
   unsigned long int seed = arguments.seed;
   double infectious_time = arguments.infectious_time;
+  double exposed_time = arguments.exposed_time;
   double period = arguments.period;
   double quarantine_ratio = arguments.quarantine_ratio;
   double velocity_scaling = arguments.velocity_scaling;
@@ -638,6 +660,11 @@ main(int argc, char *argv[])
       quarantine_ratio = get_rQ(rq, t);
     
     int pij[2] = {p0, p1};
+    /* Update states if one of the collision participants is exposed
+     * since they may be infectious by now */
+    for(int i=0; i<2; i++)
+      if(pij[i] == E)
+	update(state_arr, I_t0, t, quarantine_ratio, exposed_time, infectious_time);
     /* Will be set to 1 in case of an "Infection event", i.e. if a
        collision between an "S" and an "I" happens */
     int xy = 0; 
@@ -654,11 +681,7 @@ main(int argc, char *argv[])
 	    infect_probability = get_infect_probability(pp, t, pj);
 	  }
 	  if(randr() < infect_probability) {
-	    if(randr() < quarantine_ratio) {
-	      state_arr[pj] = Q;
-	    } else {
-	      state_arr[pj] = I;
-	    }
+	    state_arr[pj] = E;
 	    Rt[pi] += 1;
 	    I_t0[pj] = t;
 	  }
@@ -670,7 +693,7 @@ main(int argc, char *argv[])
     /* Go over state and recover, then print state. This should only
        be necessary if a collision event occured. */
     if(xy) {
-      recover(state_arr, I_t0, t, infectious_time);
+      update(state_arr, I_t0, t, quarantine_ratio, exposed_time, infectious_time);
       print_state(state_arr, Rt, t, cycles-1);
     }
   }

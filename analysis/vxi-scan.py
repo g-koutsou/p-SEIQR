@@ -7,10 +7,11 @@ from itertools import product
 import gvar as gv
 import lsqfit
 
-rt = 4.38
-vs = np.round(np.arange(0.05, 1.05, 0.05), 4)
-pi = np.round(np.arange(0.05, 1.05, 0.05), 4)
-seeds = list(range(1, 10))
+rt = 4.32
+et = 0.86
+vs = np.round(np.arange(0.1, 1.05, 0.1), 4)
+pi = np.round(np.arange(0.1, 1.05, 0.1), 4)
+seeds = list(range(7, 10))
 ascale = 10/rt # days per time unit
 
 sets = dict()
@@ -19,10 +20,10 @@ for v,p in tqdm.tqdm(vxp):
     key = (v,p)
     sets[key] = defaultdict(list)
     for s in seeds:
-        fname = "data/vxi-scan/out-s{:02.0f}-t{:4.2f}-v{:5.3f}-i{:5.3f}.txt".format(s,rt,v,p)
+        fname = "data/vxi-scan/out-s{:02.0f}-t{:4.2f}-e{:4.2f}-v{:5.3f}-i{:5.3f}.txt".format(s,rt,et,v,p)
         for line in open(fname, "r"):
-            i,t,Rt,S,I,Q,RI,RQ = line.split()
-            sets[key][s,int(i)].append((float(t), float(Rt), int(S), int(I), int(Q), int(RI), int(RQ)))
+            i,t,Rt,S,E,I,Q,RI,RQ = line.split()
+            sets[key][s,int(i)].append((float(t), float(Rt), int(S), int(E), int(I), int(Q), int(RI), int(RQ)))
     sets[key] = {k: np.array(sets[key][k]) for k in sets[key]}
 
 def interpolate(xs, ys, xp=None, points=75):
@@ -39,7 +40,7 @@ ax = fig.add_axes([0.15, 0.15, 0.8, 0.8])
 v = 1
 for p in pi:
     t = [sets[v,p][x][:,0] for x in sets[v,p]]
-    I = [sets[v,p][x][:,3] for x in sets[v,p]]
+    I = [sets[v,p][x][:,4] for x in sets[v,p]]
     tp,yp = interpolate(t, I)
     nstat = yp.shape[0]
     ave = yp.mean(axis=0)
@@ -117,7 +118,7 @@ fig.show()
 fig = plt.figure(4)
 fig.clf()
 ax = fig.add_axes([0.15, 0.15, 0.8, 0.8])
-for p in [0.25, 0.5, 0.75]:
+for p in [0.3, 0.5, 0.8]:
     j = pi.tolist().index(p)
     ave,err = R0[:,j,:].T
     x = vs
@@ -160,6 +161,6 @@ ax.set_xlabel("$v/v_0$")
 fig.canvas.draw()
 fig.show()
 
-if True:
+if False:
     for i in [1,2,3,4,5]:
         plt.figure(i).savefig("vxi-scan-{}.pdf".format(i), bbox_inches="tight") 

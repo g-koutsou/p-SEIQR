@@ -6,25 +6,26 @@ from collections import defaultdict
 import gvar as gv
 import lsqfit
 
-rt = 4.38
+rt = 4.32
+et = 0.86
 seeds = list(range(1, 10))
-vp = "A6"
-qp = "A6"
-pp = "A6"
-Ni,Nq = 4,2
+vp = "C0"
+qp = "C0"
+pp = "C0"
+Ni,Nq = 8,2
 
 sets = {}
 sets[vp] = defaultdict(list)
 for s in seeds:
     if pp != "":
-        fname = "data/scenarios/out-long-s{:02.0f}-t{:4.2f}-vp{}-qp{}-pp{}-Ni{:06.0f}-Nq{:06.0f}.txt".format(s,rt,vp,qp,pp,Ni,Nq)
+        fname = "data/scenarios/out-long-s{:02.0f}-t{:4.2f}-e{:4.2f}-vp{}-qp{}-pp{}-Ni{:06.0f}-Nq{:06.0f}.txt".format(s,rt,et,vp,qp,pp,Ni,Nq)
     else:
-        fname = "data/scenarios/out-long-s{:02.0f}-t{:4.2f}-vp{}-qp{}-Ni{:06.0f}-Nq{:06.0f}.txt".format(s,rt,vp,qp,Ni,Nq)
+        fname = "data/scenarios/out-long-s{:02.0f}-t{:4.2f}-e{:4.2f}-vp{}-qp{}-Ni{:06.0f}-Nq{:06.0f}.txt".format(s,rt,et,vp,qp,Ni,Nq)
     for line in tqdm.tqdm(open(fname, "r"), desc="t={:4.2f}, seed={:d}".format(rt, s)):
-        if len(line.split()) != 8:
+        if len(line.split()) != 9:
             break
-        i,t,Rt,S,I,Q,RI,RQ = line.split()
-        sets[vp][s,int(i)].append((float(t), float(Rt), int(S), int(I), int(Q), int(RI), int(RQ)))
+        i,t,Rt,S,E,I,Q,RI,RQ = line.split()
+        sets[vp][s,int(i)].append((float(t), float(Rt), int(S), int(E), int(I), int(Q), int(RI), int(RQ)))
     if len(sets[vp]) != 1:
         sets[vp].pop((s,int(i)))
 sets[vp] = {k: np.array(sets[vp][k]) for k in sets[vp]}
@@ -46,11 +47,18 @@ cy_data = np.array([
         662,695,715,735,750,761,767,
         772,784,790,795,804,810,817,
         822,837,843,850,857,864,872,
-        874,878,883,889,891,892,898
+        874,878,883,889,891,892,898,
+        901,903,905,907,910,914,916,
+        917,918,922,923,927,927,935,
+        937,939,939,941,942
 ])
 
 end_day = {"A4": 57,
-           "A6": 60}[vp]
+           "A6": 60,
+           "A7": 82,
+           "C0": 82,
+           "C1": 82,
+           "C2": 82}[vp]
 
 cy = cy_data[:end_day]
 
@@ -100,8 +108,8 @@ ax.legend(loc="upper left", frameon=False, ncol=1)
 ax.set_ylabel(r"Infected")
 ax.set_xticklabels([])
 ax.set_ylim(0, 1750)
-xmax = 172
-ax.set_xticks(np.arange(10,xmax), minor=True)
+xmin,xmax = 0,210
+ax.set_xticks(np.arange(xmin,xmax), minor=True)
 #.
 # ax = fig.add_subplot(gs[35:65,55:95])
 # m, = ax.plot(ascale*tp, ave, ls="-", lw=0.5)
@@ -112,18 +120,19 @@ ax.set_xticks(np.arange(10,xmax), minor=True)
 # ax.set_ylim(100,880)
 #.
 ax = fig.add_subplot(gs[72:,:])
-p = gv.gvar(["4.289(27)", "-0.0527(11)"])
+p = gv.gvar(["3.651(49)", "-0.060(20)", "-0.2555(92)", "0.0064(38)"])
 ts,v = np.loadtxt("data/scenarios/vp{}.txt".format(vp)).T
 if v.shape != ():
     widths=(ascale*(ts[1:]-ts[:-1])-0.5).tolist()
     widths.append(1e3)
 else:
     widths=1000
-R0 = p[0]*(v+p[1])
+R0 = (p[0]+p[1])*v + (p[2]+p[3])
 ba = ax.bar(ts*ascale, gv.mean(R0), align="edge", width=widths)
 ax.plot([0, 1e3], [1,1], ls="--", color="k")
 if pp != "":
-    prms = gv.gvar(["3.995(15)", "-0.0295(52)", "-0.1388(17)", "0.00051(60)"])
+    # prms = gv.gvar(["3.995(15)", "-0.0295(52)", "-0.1388(17)", "0.00051(60)"])
+    prms = gv.gvar(["3.651(49)", "-0.060(20)", "-0.2555(92)", "0.0064(38)"])
     def z(p, x, y):
         a,b,c,d = p
         return gv.mean(a*x*y + b*x + c*y + d)
@@ -176,7 +185,7 @@ ax.set_ylabel(r"$\tilde{\mathcal{R}}_0$")
 ax.set_xlabel("date")
 #.
 for ax in fig.axes[:]:
-    ax.set_xlim(10,xmax)
+    ax.set_xlim(xmin,xmax)
 ax = fig.axes[-1]
 xt = ax.get_xticks()
 fmt = lambda d: "/".join(list(reversed(str(d).split("-")))[:2])

@@ -15,8 +15,8 @@ for rt in rts:
     for s in seeds:
         fname = "data/rt-scan/out-s{:02.0f}-t{:4.2f}.txt".format(s,rt)
         for line in tqdm.tqdm(open(fname, "r"), desc="t={:4.2f}, seed={:d}".format(rt, s)):
-            i,t,Rt,S,I,Q,RI,RQ = line.split()
-            sets[rt][s,int(i)].append((float(t), float(Rt), int(S), int(I), int(Q), int(RI), int(RQ)))
+            i,t,Rt,S,E,I,Q,RI,RQ = line.split()
+            sets[rt][s,int(i)].append((float(t), float(Rt), int(S), int(E), int(I), int(Q), int(RI), int(RQ)))
     sets[rt] = {k: np.array(sets[rt][k]) for k in sets[rt]}
 
 def interpolate(xs, ys, xp=None):
@@ -32,7 +32,7 @@ fig.clf()
 ax = fig.add_axes([0.15, 0.15, 0.8, 0.8])
 for rt in rts:
     t = [sets[rt][x][:,0] for x in sets[rt]]
-    I = [sets[rt][x][:,3] for x in sets[rt]]
+    I = [sets[rt][x][:,4] for x in sets[rt]]
     tp,yp = interpolate(t, I)
     nstat = yp.shape[0]
     ave = yp.mean(axis=0)
@@ -55,7 +55,7 @@ for rt in rts:
     nstat = yp.shape[0]
     ave = yp.mean(axis=0)
     err = yp.std(axis=0)/np.sqrt(yp.shape[0])
-    m, = ax.plot(tp, ave, ls="-", lw=0.5, label=r"$d_f/a={:4.1f}$".format(rt))
+    m, = ax.plot(tp, ave, ls="-", lw=0.5, label=r"$\tau_i/a={:4.1f}$".format(rt))
     ax.fill_between(tp, ave+err, ave-err, alpha=0.5, color=m.get_color())
     ax.plot([rt, rt], [-0.1, max(ave)*1.1], ls="--", color=m.get_color())
     # ax.text(rt, max(ave)+0.1, "$d_f/a={:4.1f}$".format(rt), fontsize=11, va="bottom", ha="center")
@@ -95,8 +95,8 @@ y = fit.p[0]*(x+fit.p[1])
 ax.plot(x, gv.mean(y), ls="--", color=m.get_color())
 ax.set_xlim(0)
 ax.set_ylim(0)
-ax.set_ylabel(r"$\mathcal{R}_0$=$\mathcal{R}$($d_f$)")
-ax.set_xlabel(r"$d_f/a$")
+ax.set_ylabel(r"$\mathcal{R}_0$=$\mathcal{R}$($\tau_i$)")
+ax.set_xlabel(r"$\tau_i/a$")
 fig.canvas.draw()
 fig.show()
 
