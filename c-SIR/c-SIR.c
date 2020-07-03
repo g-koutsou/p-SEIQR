@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <float.h>
 #include <argp.h>
 #include <stdbool.h>
 #include <string.h>
@@ -460,6 +461,7 @@ static struct argp_option options[] =
    {"infectious-time",     't', "T",      0,  "Time each infected is infectious, in simulation time units" },
    {"exposed-time",        'e', "T",      0,  "Exposed time (infected but not infectious yet), in simulation units" },
    {"period",              'p', "P",      0,  "Period: restart every P time units" },
+   {"stop-at",             'T', "T",      0,  "Stop at time T (in simulation time units)" },
    {"quarantine-ratio",    'r', "R",      0,  "Ratio of infected to quarantined" },
    {"infect-probability",  'i', "R",      0,  "Probability a collision will result in infection" },
    {"initial-infectious",  'I', "NI",     0,  "Initial number of infectious" },
@@ -477,7 +479,7 @@ struct arguments
   char *fname;
   char *velocity_profile, *quarantine_profile, *probability_profile;
   int N;
-  double infectious_time, exposed_time, period, quarantine_ratio, velocity_scaling, infect_probability;
+  double infectious_time, exposed_time, period, stop_at, quarantine_ratio, velocity_scaling, infect_probability;
   int initial_infected, initial_quarantined;
   unsigned long int seed;
 };
@@ -500,6 +502,9 @@ parse_opt(int key, char *arg, struct argp_state *state)
     break;
   case 'p':
     arguments->period = strtod(arg, NULL);
+    break;
+  case 'T':
+    arguments->stop_at = strtod(arg, NULL);
     break;
   case 'v':
     arguments->velocity_scaling = strtod(arg, NULL);
@@ -576,13 +581,14 @@ main(int argc, char *argv[])
   struct arguments arguments;
   arguments.infectious_time = 3;
   arguments.exposed_time = 0;
-  arguments.period = 15;
+  arguments.period = DBL_MAX;
   arguments.quarantine_ratio = 0;
   arguments.velocity_scaling = 1;
   arguments.initial_infected = 1;
   arguments.initial_quarantined = 0;
   arguments.infect_probability = 1;
   arguments.seed = 7;
+  arguments.stop_at = DBL_MAX;
   arguments.velocity_profile = NULL;
   arguments.quarantine_profile = NULL;
   arguments.probability_profile = NULL;
@@ -593,6 +599,7 @@ main(int argc, char *argv[])
   double infectious_time = arguments.infectious_time;
   double exposed_time = arguments.exposed_time;
   double period = arguments.period;
+  double stop_at = arguments.stop_at;
   double quarantine_ratio = arguments.quarantine_ratio;
   double velocity_scaling = arguments.velocity_scaling;
   int initial_infected = arguments.initial_infected;
@@ -656,6 +663,9 @@ main(int argc, char *argv[])
       print_state(state_arr, Rt, 0, cycles-1);
     }
 
+    if(t >= stop_at)
+      break;
+    
     if(rq != NULL)
       quarantine_ratio = get_rQ(rq, t);
     
