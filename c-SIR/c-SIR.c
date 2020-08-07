@@ -8,14 +8,33 @@
 
 static unsigned int N; /* Number of particles */
 #define NSTATES (6)    /* Number of states */
-
-#define S  0  // Susceptible
-#define E  1  // Exposed (will become infected)
-#define I  2  // Infectious
-#define Q  3  // Quarantined (Infected but not infectious)
-#define RI 4  // Recovered after being infectious
-#define RQ 5  // Recovered after being quarantined
+enum state {
+	    S = 0,    // Susceptible
+	    E = 1,    // Exposed (will become infected)
+	    I = 2,    // Infectious
+	    Q = 3,    // Quarantined (Infected but not infectious)
+	    RI= 4,    // Recovered after being infectious
+	    RQ= 5     // Recovered after being quarantined
+};
 #define RANDOM_MAX (2147483647)
+
+/***
+ * Velocity Profile Struct: stores velocities and the points in time
+ * after which each velocity applies
+ ***/
+struct particle_state {
+  enum state state; /* S, E, I, R, etc. */
+  int R;     /* Number of individuals this particle has infected up to now */
+  double t0;    /* Time individual transitioned from S to E */
+};
+
+/***
+ * Sorted queue of the time the next recovery will occure
+ ***/
+struct recover_queue {
+  double *t; /* list of times recoveries will occure, from soonest to latest */
+  int n;     /* number of items in *t */
+};
 
 /***
  * Velocity Profile Struct: stores velocities and the points in time
@@ -330,49 +349,65 @@ random_particle()
  * of quarantined ("Q")
  ***/
 void
-init_states(int *arr, int n_infected, int n_quarantined)
+init_states(struct particle_state *arr, int n_exposed, int n_infected, int n_quarantined, double t0)
 {
   for(int i=0; i<N; i++) {
-    arr[i] = S;
+    arr[i].state = S;
   }
 
-  for(int i=0; i<n_infected; i++) {
+  for(int i=0; i<n_exposed; i++) {
     int j = random_particle();
-    arr[j] = I;
+    arr[j].state = E;
   }
 
-  for(int j=random_particle(),i=0; i<n_quarantined;j=random_particle()) {
-    if(arr[j] != I) {
+  for(int j=random_particle(),i=0; i<n_infected; j=random_particle()) {
+    if(arr[j].state == S) {
       i++;
-      arr[j] = Q;
+      arr[j].state = I;
     }
   }
-  return;
-}
 
-/***
- * Initialize the N-length array *arr to t0. Used to track the time of
- * infection.
- ***/
-void
-init_I_t0(double *arr, double t0)
-{
-  for(int i=0; i<N; i++) {
-    arr[i] = t0;
+  for(int j=random_particle(),i=0; i<n_quarantined; j=random_particle()) {
+    if(arr[j].state == S) {
+      i++;
+      arr[j].state = Q;
+    }
   }
+  
+  for(int i=0; i<N; i++) {
+    arr[i].t0 = t0;
+  }
+
+  for(int i=0; i<N; i++) {
+    arr[i].R = 0;
+  }
+  
   return;
 }
 
-/***
- * Initialize the N-length integer array *Rt to zero. *Rt is used to
- * track the number of transmissions, in turn to be used to obtain the
- * basic reproduction number.
- ***/
 void
-init_R(int *Rt)
+init_recover_queue(struct recover_queue *queue, struct particle_state *arr, double te, double ti)
 {
   for(int i=0; i<N; i++) {
-    Rt[i] = 0;
+    queue->t[i] = DBL_MAX;
+  }
+  queue->n = 0;
+
+  for(int i=0; i<N; i++) {
+    int x = arr[i].state == I;
+    int y = arr[i].state == Q;
+    if(x || y) {
+      queue->t[queue->n] = arr[i].t0 + ti;
+      queue->n += 1;
+    }
+  }
+  
+  for(int i=0; i<N; i++) {
+    int x = arr[i].state == E;
+    if(x) {
+      queue->t[queue->n] = arr[i].t0 + ti + te;
+      queue->n += 1;
+    }
   }
   return;
 }
@@ -383,34 +418,34 @@ init_R(int *Rt)
  * "RI"s and "RQ"s.
  ***/
 void
-update(int *arr, double *times, double t, double quarantine_ratio, double exposed_time, double infectious_time)
+update(struct particle_state *arr, double t, double quarantine_ratio, double exposed_time, double infectious_time)
 {
   for(int i=0; i<N; i++) {
-    int xi = t - times[i] > infectious_time;
-    int xj = t - times[i] > exposed_time;
+    int xi = (t - arr[i].t0) > (infectious_time + exposed_time);
+    int xj = (t - arr[i].t0) > exposed_time;
     {
-      int y = arr[i] == E;
+      int y = arr[i].state == E;
       if(xj & y) {
 	/* Turn an exposed ("E") to either "Q" or "I" */
 	if(randr() < quarantine_ratio) {
-	  arr[i] = Q;
+	  arr[i].state = Q;
 	} else {
-	  arr[i] = I;
+	  arr[i].state = I;
 	}
       }
     }
     {
-      int y = arr[i] == I;
+      int y = arr[i].state == I;
       /* Recover an infectious */
       if(xi & y) {
-	arr[i] = RI;
+	arr[i].state = RI;
       }
     }
     {
-      int y = arr[i] == Q;
+      int y = arr[i].state == Q;
       /* Recover a quaratnined */
       if(xi & y) {
-	arr[i] = RQ;
+	arr[i].state = RQ;
       }
     }
   }
@@ -422,13 +457,13 @@ update(int *arr, double *times, double t, double quarantine_ratio, double expose
  * individuals), and the number of individuals in each state.
  ***/
 void
-print_state(int *arr, int *Rt, double t, int cycles)
+print_state(struct particle_state *arr, double t, int cycles)
 {
   int nR = 0;
   double Rmean = 0;
   for(int i=0; i<N; i++)
-    if(arr[i] == RI) {
-      Rmean += Rt[i];
+    if(arr[i].state == RI) {
+      Rmean += arr[i].R;
       nR++;
     }
   if(nR == 0) {
@@ -443,7 +478,7 @@ print_state(int *arr, int *Rt, double t, int cycles)
     counts[i] = 0;
   
   for(int i=0; i<N; i++)
-    counts[arr[i]] += 1;
+    counts[arr[i].state] += 1;
   
   for(int i=0; i<NSTATES; i++)
     printf(" %10d", counts[i]);
@@ -464,6 +499,7 @@ static struct argp_option options[] =
    {"stop-at",             'T', "T",      0,  "Stop at time T (in simulation time units)" },
    {"quarantine-ratio",    'r', "R",      0,  "Ratio of infected to quarantined" },
    {"infect-probability",  'i', "R",      0,  "Probability a collision will result in infection" },
+   {"initial-exposed",     'E', "NE",     0,  "Initial number of exposed" },
    {"initial-infectious",  'I', "NI",     0,  "Initial number of infectious" },
    {"initial-quarantined", 'Q', "NQ",     0,  "Initial number of quarantined" },
    {"random-seed",         's', "S",      0,  "Use S to initialize the random number generator" },
@@ -480,7 +516,7 @@ struct arguments
   char *velocity_profile, *quarantine_profile, *probability_profile;
   int N;
   double infectious_time, exposed_time, period, stop_at, quarantine_ratio, velocity_scaling, infect_probability;
-  int initial_infected, initial_quarantined;
+  int initial_infected, initial_quarantined, initial_exposed;
   unsigned long int seed;
 };
 
@@ -535,6 +571,9 @@ parse_opt(int key, char *arg, struct argp_state *state)
   case 'Q':
     arguments->initial_quarantined = strtoul(arg, NULL, 10);
     break;
+  case 'E':
+    arguments->initial_exposed = strtoul(arg, NULL, 10);
+    break;
   case 'f':
     arguments->velocity_profile = arg;
     opts_parsed[1][1] = true;
@@ -584,7 +623,8 @@ main(int argc, char *argv[])
   arguments.period = DBL_MAX;
   arguments.quarantine_ratio = 0;
   arguments.velocity_scaling = 1;
-  arguments.initial_infected = 1;
+  arguments.initial_infected = 0;
+  arguments.initial_exposed = 1;
   arguments.initial_quarantined = 0;
   arguments.infect_probability = 1;
   arguments.seed = 7;
@@ -604,6 +644,7 @@ main(int argc, char *argv[])
   double velocity_scaling = arguments.velocity_scaling;
   int initial_infected = arguments.initial_infected;
   int initial_quarantined = arguments.initial_quarantined;
+  int initial_exposed = arguments.initial_exposed;
   double infect_probability = arguments.infect_probability;
   N = arguments.N;
   char *fname = arguments.fname;
@@ -623,9 +664,9 @@ main(int argc, char *argv[])
   if(probability_profile != NULL)
     pp = load_probability_profile(probability_profile);
 
-  int *state_arr = ualloc(sizeof(int)*N);
-  double *I_t0 = ualloc(sizeof(double)*N);
-  int *Rt = ualloc(sizeof(double)*N);
+  struct particle_state *state_arr = ualloc(sizeof(struct particle_state)*N);
+  struct recover_queue r_queue;
+  r_queue.t = ualloc(sizeof(double)*N);
   FILE *fp = uopen(fname, "r");
   /* Read first line, get t0, then rewind */
   double t0 = 0;
@@ -656,11 +697,10 @@ main(int argc, char *argv[])
     }
     if(t >= period || cycles == 0) {
       t0 = tx;
-      init_states(state_arr, initial_infected, initial_quarantined);
-      init_I_t0(I_t0, 0);
-      init_R(Rt);
+      init_states(state_arr, initial_exposed, initial_infected, initial_quarantined, t);
+      init_recover_queue(&r_queue, state_arr, exposed_time, infectious_time);
       cycles += 1;
-      print_state(state_arr, Rt, 0, cycles-1);
+      print_state(state_arr, 0, cycles-1);
     }
 
     if(t >= stop_at)
@@ -674,37 +714,49 @@ main(int argc, char *argv[])
      * since they may be infectious by now */
     for(int i=0; i<2; i++)
       if(pij[i] == E)
-	update(state_arr, I_t0, t, quarantine_ratio, exposed_time, infectious_time);
+	update(state_arr, t, quarantine_ratio, exposed_time, infectious_time);
     /* Will be set to 1 in case of an "Infection event", i.e. if a
        collision between an "S" and an "I" happens */
     int xy = 0; 
     for(int i=0; i<2; i++) {
       int pi = pij[(i+0) % 2];
       int pj = pij[(i+1) % 2];
-      int x = state_arr[pi] == I;
-      int y = state_arr[pj] == S;
+      int x = state_arr[pi].state == I;
+      int y = state_arr[pj].state == S;
       if(x & y) {
-    	double dt = t - I_t0[pi];
-    	if(dt < infectious_time) {
+    	double dt = t - state_arr[pi].t0;
+    	if(dt < (infectious_time + exposed_time)) {
 	  if(pp != NULL) {
 	    // Determine probability according to susceptible
 	    infect_probability = get_infect_probability(pp, t, pj);
 	  }
 	  if(randr() < infect_probability) {
-	    state_arr[pj] = E;
-	    Rt[pi] += 1;
-	    I_t0[pj] = t;
+	    state_arr[pj].state = E;
+	    state_arr[pi].R += 1;
+	    state_arr[pj].t0 = t;
+	    r_queue.t[r_queue.n] = t + infectious_time + exposed_time;
+	    r_queue.n += 1;
 	  }
     	}
       }
       xy += (x & y);
     }
 
+    int z = r_queue.t[0] < t;
+    if(z) {
+      while(r_queue.t[0] < t) {
+	for(int i=1; i<r_queue.n; i++) {
+	  r_queue.t[i-1] = r_queue.t[i];
+	}
+	r_queue.n -= 1;
+	r_queue.t[r_queue.n] = DBL_MAX;
+      }
+    }
     /* Go over state and recover, then print state. This should only
        be necessary if a collision event occured. */
-    if(xy) {
-      update(state_arr, I_t0, t, quarantine_ratio, exposed_time, infectious_time);
-      print_state(state_arr, Rt, t, cycles-1);
+    if(xy||z) {
+      update(state_arr, t, quarantine_ratio, exposed_time, infectious_time);
+      print_state(state_arr, t, cycles-1);
     }
   }
 
@@ -713,8 +765,7 @@ main(int argc, char *argv[])
   if(rq != NULL)
     free(rq);
   free(state_arr);
-  free(Rt);
-  free(I_t0);
+  free(r_queue.t);
   fclose(fp);
   return 0;
 }
