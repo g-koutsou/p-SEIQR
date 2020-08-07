@@ -4,7 +4,7 @@ import subprocess
 import itertools
 import tqdm
 
-cmd = "./p-SIR/c-SIR/c-sir"
+cmd = "./p-SEIQR/c-SIR/c-sir"
 trajs = "./data/trajs/traj-tail-n00250000.txt"
 
 Npop = 250000

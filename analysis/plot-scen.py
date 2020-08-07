@@ -11,7 +11,7 @@ import tempfile
 import datetime
 import json
 
-cmd = "./p-SIR/c-SIR/c-sir"
+cmd = "./p-SEIQR/c-SIR/c-sir"
 trajs = "./data/trajs/traj-tail-n00250000.txt"
 cy_data = np.loadtxt("cy.txt")
 T0,T1,T2 = 15,73,145
@@ -73,7 +73,7 @@ N_days = 297
 
 day0 = datetime.datetime(2020,3,9)
 
-scenarios = json.load(open("scenarios.json", "r"))
+scenarios = json.load(open("p-SEIQR/analysis/scenarios.json", "r"))
 
 scens = ("A","B","C","D")
 
@@ -81,7 +81,7 @@ xs = collections.defaultdict(list)
 ys = collections.defaultdict(list)
 for scen in scens:
     for s in range(32):
-        x,y = np.loadtxt("scen-{}-seed{:06.0f}.txt".format(scen, s)).T
+        x,y = np.loadtxt("data/scenarios/scen-{}-seed{:06.0f}.txt".format(scen, s)).T
         xs[scen].append(x)
         ys[scen].append(y)
 
@@ -106,13 +106,7 @@ for i,scen in enumerate(scens):
     ax.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x,_: "{:4.1f}".format(x/1000)))
     m0, = ax.plot(cy_data, color="k", marker="o", ls="", ms=4, alpha=0.6)
     m1, = ax.plot(x*ascale, av, ls="-")    
-    # ax.plot(x*ascale, lo, ls="--", color="k", lw=0.5)    
-    # ax.plot(x*ascale, hi, ls="--", color="k", lw=0.5)
-    # for c in y[:1]:
-    #     m1, = ax.plot(x*ascale, c, ls="-", alpha=0.5)    
     ax.fill_between(x*ascale, lo, hi, color=color_wheel[0], alpha=0.1)
-    # for x in [T0,T1]:
-    #     ax.plot([x]*2, [0, 1_330], ls="--", color="k")
     ax.set_xlim(0, N_days)
     ax.set_xticklabels([])
     ax.set_ylim(0, 1_330)
@@ -177,9 +171,6 @@ for i,scen in enumerate(scens):
     ax.plot(tt, 1-gv.mean(rat), ls="-", color="k")
     ax.set_ylim(-0.01, 1.01)
     ax.set_xlim(0, N_days)
-    # xt = ax.get_xticks()
-    # f = [(lambda x: "{2:02.0f}/{1:02.0f}\n{0}".format(*(x.timetuple()[:3])))(day0 + datetime.timedelta(d)) for d in xt]
-    # ax.set_xticklabels(f)
     ax.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x,_: "{2:02.0f}/{1:02.0f}\n{0}".format(
         *((day0 + datetime.timedelta(x)).timetuple()[:3]))))
     if col == 0:

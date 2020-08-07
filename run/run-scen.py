@@ -10,7 +10,7 @@ import tempfile
 import datetime
 import json
 
-cmd = "./p-SIR/c-SIR/c-sir"
+cmd = "./p-SEIQR/c-SIR/c-sir"
 trajs = "./data/trajs/traj-tail-n00250000.txt"
 cy_data = np.loadtxt("cy.txt")
 T0,T1,T2 = 15,73,145
@@ -93,7 +93,7 @@ N_days = 297
 
 day0 = datetime.datetime(2020,3,9)
 
-scenarios = json.load(open("scenarios.json", "r"))
+scenarios = json.load(open("p-SEIQR/analysis/scenarios.json", "r"))
 
 scen = "C"
 
@@ -121,4 +121,4 @@ with multiprocess.Pool(None) as pool:
     xs,ys = zip(*[x for x in r.get()])
 
 for s,(x,y) in enumerate(zip(xs,ys)):
-    np.savetxt("scen-{}-seed{:06.0f}.txt".format(scen, s), np.array([x,y]).T)
+    np.savetxt("data/scenarios/scen-{}-seed{:06.0f}.txt".format(scen, s), np.array([x,y]).T)
