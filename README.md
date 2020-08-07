@@ -1,7 +1,7 @@
-# p-SIR
-## Particle dynamics for studying the SIR model
+# p-SEIQR
+## Particle dynamics for studying the SEIQR model
 
-Scripts and programs that use particle collisions simulations to study the SIR model (and its extensions).
+Scripts and programs that use particle collisions simulations to study extensions of the S(E)IR model.
 
 ### Components
 
@@ -9,4 +9,7 @@ Scripts and programs that use particle collisions simulations to study the SIR m
 
 - [`c-SIR/`](c-SIR): C-code for running the SIR model (or extensions of it) over a collisions list file, as produced by DynamO and reformatted by `dynamo/convert.py`.
 
+- [`run/`](run): Python scripts that run `c-SIR`.
+
 - [`analysis/`](analysis): Python scripts for post-processing and visualizing the output from `c-SIR`.
+
