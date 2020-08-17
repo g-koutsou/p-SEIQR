@@ -1,19 +1,14 @@
 from matplotlib import pyplot as plt
 import matplotlib as mpl
-import scipy.optimize
-import multiprocess
 import collections
 import numpy as np
-import scipy as sp
-import subprocess
 import gvar as gv
-import tempfile
 import datetime
 import json
 
 cmd = "./p-SEIQR/c-SIR/c-sir"
 trajs = "./data/trajs/traj-tail-n00250000.txt"
-cy_data = np.loadtxt("cy.txt")
+cy_data = np.loadtxt("./data/cyprus-confirmed.txt")
 T0,T1,T2 = 15,73,145
 Ti = 0
 

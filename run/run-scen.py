@@ -12,7 +12,7 @@ import json
 
 cmd = "./p-SEIQR/c-SIR/c-sir"
 trajs = "./data/trajs/traj-tail-n00250000.txt"
-cy_data = np.loadtxt("cy.txt")
+cy_data = np.loadtxt("./data/cyprus-confirmed.txt")
 T0,T1,T2 = 15,73,145
 Ti = 0
 
